@@ -1,0 +1,63 @@
+#include <msp430.h>
+
+int count = 50;
+int soundAlarm = 0;
+int IRSensor();
+int MAGSensor();
+
+int main(void)
+{
+    WDTCTL = WDTPW | WDTHOLD;   // stop watchdog timer
+
+    P1DIR |= BIT0; //1.0 output
+    P1OUT &= ~BIT0; //1.0 low
+
+    P1SEL0 |= BIT3; //1.3 ADC
+    P1SEL1 |= BIT3;
+
+    P1DIR |= BIT4; //1.4 output
+    P1OUT |= BIT4; //1.4 high
+    P1DIR &= ~BIT5; //1.5 input
+
+    ADCCTL0 |= ADCSHT_2 | ADCON;                       // ADCON, S&H=16 ADC clks
+    ADCCTL1 |= ADCSHP;                        // ADCCLK = MODOSC; sampling timer
+    ADCCTL2 &= ~ADCRES;                                // clear ADCRES in ADCCTL
+    ADCCTL2 |= ADCRES_2;                            // 12-bit conversion results
+    ADCIE |= ADCIE0;                       // Enable ADC conv complete interrupt
+    ADCMCTL0 |= ADCINCH_3 | ADCSREF_1;
+
+    while (1)
+    {
+        soundAlarm = 0;
+        soundAlarm |= IRSensor(); //if IR sensor triggers, sound alarm high
+        soundAlarm |= MAGSensor(); //if magnetic sensor triggers, sound alarm high
+        if (soundAlarm) //if sound alarm high, 1.0 high
+            P1OUT |= BIT0;
+        else
+            P1OUT &= ~BIT0; //1.0 low
+        __delay_cycles(5000);
+    }
+    return 0;
+}
+
+int IRSensor()
+{
+    ADCCTL0 |= ADCENC | ADCSC; // Sampling and conversion start
+    if (ADCMEM0 < 0xAAA) //if a low voltage is detected
+        count = 50;
+    else  //high voltage detected
+        count = count - 1;
+
+    if (count > 0)
+        return 0;       // Clear P1.0 LED off
+    else //high voltage detected 50 times in a row, movement detected
+        return 1;        // Set P1.0 LED on
+}
+
+int MAGSensor()
+{
+    if ((P1IN & BIT5) == BIT5) //if 1.5 high, return 0
+        return 0;
+    else
+        return 1;
+}
